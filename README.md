@@ -300,3 +300,19 @@
 - Longitudinal renderer forced via early return in drawVisualizer
 - Amplitude A remains fixed maximum displacement, not current red particle displacement
 - x-axis has no numbers and no lambda labels
+
+## v5.41 Longitudinal Player UI
+- Refined play / pause / reset controls to look more like modern media controls
+- Added SVG icons, larger primary play button, hover/press states, active-state feedback
+- Kept icon-only style for cleaner UI
+
+## v5.42 Longitudinal Clean + Bilingual
+- Removed A label from longitudinal graph
+- Removed red particle-vibration arrow from graph
+- Cleaned the main simulation view
+- Kept explanations in the existing More explanation section
+- Added English (Thai) format to visible texts on the Longitudinal page
+
+## v5.43 Longitudinal Equilibrium Point
+- Moved the red reference particle to the equilibrium position in Longitudinal Wave
+- At reset/start (t=0), the red point aligns with the equilibrium line so displacement can be observed from the correct reference position

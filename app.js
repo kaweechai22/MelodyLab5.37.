@@ -392,7 +392,7 @@ function drawLongitudinalFinal(ctx, c, p, w, h){
   const phase = vizState.t * 0.105 * p.speed;
 
   const obsRow = 1;
-  const obsBaseX = eqX + 145;
+  const obsBaseX = eqX; // reference particle starts at the equilibrium position
   let obsX = obsBaseX;
   let obsY = y0 + obsRow * rowGap;
 
@@ -412,7 +412,7 @@ function drawLongitudinalFinal(ctx, c, p, w, h){
   ctx.fillStyle="#cfe9ff";
   ctx.font="20px Sarabun, system-ui, sans-serif";
   ctx.textAlign="left";
-  ctx.fillText("Longitudinal Wave", 24, 36);
+  ctx.fillText("Longitudinal Wave (คลื่นตามยาว)", 24, 36);
 
   // Wave propagation arrow
   ctx.save();
@@ -431,7 +431,7 @@ function drawLongitudinalFinal(ctx, c, p, w, h){
   ctx.fill();
   ctx.font="bold 17px Sarabun, system-ui, sans-serif";
   ctx.textAlign="center";
-  ctx.fillText("ทิศทางการเคลื่อนที่ของคลื่น", w*0.51, 62);
+  ctx.fillText("Wave propagation (ทิศทางการเคลื่อนที่ของคลื่น)", w*0.51, 62);
   ctx.restore();
 
   // Equilibrium line and label
@@ -447,45 +447,10 @@ function drawLongitudinalFinal(ctx, c, p, w, h){
   ctx.fillStyle="rgba(255,255,255,.95)";
   ctx.textAlign="center";
   ctx.font="16px Sarabun, system-ui, sans-serif";
-  ctx.fillText("ตำแหน่งสมดุล", eqX, y0 - 88);
-  ctx.fillText("(สมดุล)", eqX, y0 - 66);
+  ctx.fillText("Equilibrium position", eqX, y0 - 88);
+  ctx.fillText("(ตำแหน่งสมดุล)", eqX, y0 - 66);
   ctx.restore();
 
-  // Fixed maximum displacement guide line: amplitude A does not follow the red particle.
-  const maxDispX = eqX + ampPx;
-  ctx.save();
-  ctx.strokeStyle="rgba(255,77,141,.55)";
-  ctx.setLineDash([6,7]);
-  ctx.lineWidth=2;
-  ctx.beginPath();
-  ctx.moveTo(maxDispX, y0 - 58);
-  ctx.lineTo(maxDispX, y0 + rowGap*3 + 22);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.restore();
-
-  // Fixed amplitude A marker
-  ctx.save();
-  const aY = y0 - 45;
-  ctx.strokeStyle="#ff4d8d";
-  ctx.fillStyle="#ff4d8d";
-  ctx.lineWidth=3;
-  ctx.beginPath();
-  ctx.moveTo(eqX, aY);
-  ctx.lineTo(maxDispX, aY);
-  ctx.stroke();
-  const ah=8;
-  ctx.beginPath();
-  ctx.moveTo(eqX,aY); ctx.lineTo(eqX+ah,aY-ah); ctx.moveTo(eqX,aY); ctx.lineTo(eqX+ah,aY+ah);
-  ctx.moveTo(maxDispX,aY); ctx.lineTo(maxDispX-ah,aY-ah); ctx.moveTo(maxDispX,aY); ctx.lineTo(maxDispX-ah,aY+ah);
-  ctx.stroke();
-  ctx.textAlign="center";
-  ctx.font="bold 26px Sarabun, system-ui, sans-serif";
-  ctx.fillText("A", (eqX+maxDispX)/2, aY-12);
-  ctx.font="14px Sarabun, system-ui, sans-serif";
-  ctx.fillStyle="rgba(255,205,224,.96)";
-  ctx.fillText("การกระจัดสูงสุด", (eqX+maxDispX)/2, aY+24);
-  ctx.restore();
 
   // x-axis: no numbers, no lambda
   ctx.save();
@@ -543,49 +508,7 @@ function drawLongitudinalFinal(ctx, c, p, w, h){
     }
   }
 
-  // Observation particle callout: not tied to A.
-  ctx.save();
-  ctx.strokeStyle="rgba(255,255,255,.70)";
-  ctx.fillStyle="rgba(255,255,255,.92)";
-  ctx.lineWidth=2;
-  ctx.beginPath();
-  ctx.moveTo(obsX+12, obsY-14);
-  ctx.lineTo(obsX+70, obsY-34);
-  ctx.lineTo(obsX+138, obsY-34);
-  ctx.stroke();
-  ctx.textAlign="left";
-  ctx.font="15px Sarabun, system-ui, sans-serif";
-  ctx.fillText("อนุภาคอ้างอิงสำหรับสังเกต", obsX+144, obsY-30);
-  ctx.restore();
 
-  // Particle vibration arrow: below the compact particle rows, above x-axis/player area.
-  const vibY = y0 + rows*rowGap + 28;
-  ctx.save();
-  ctx.strokeStyle="#ff4d8d";
-  ctx.fillStyle="#ff4d8d";
-  ctx.lineWidth=4;
-  ctx.beginPath();
-  ctx.moveTo(eqX-78, vibY);
-  ctx.lineTo(eqX+78, vibY);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(eqX-78,vibY);
-  ctx.lineTo(eqX-58,vibY-12);
-  ctx.lineTo(eqX-58,vibY+12);
-  ctx.closePath();
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(eqX+78,vibY);
-  ctx.lineTo(eqX+58,vibY-12);
-  ctx.lineTo(eqX+58,vibY+12);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle="rgba(255,255,255,.92)";
-  ctx.textAlign="center";
-  ctx.font="17px Sarabun, system-ui, sans-serif";
-  ctx.fillText("การสั่นของอนุภาค", eqX, vibY+32);
-  ctx.fillText("(ซ้าย – ขวา)", eqX, vibY+54);
-  ctx.restore();
 
   // No legend dots under x-axis in this final visual.
 }
@@ -808,6 +731,20 @@ function modeLabel(mode){
     dopplerViz:"Doppler"
   }[mode] || mode;
 }
+function updateVizPlayerButtons(trigger){
+  const play=$("vizPlayBtn"), pause=$("vizPauseBtn"), reset=$("vizResetBtn");
+  if(play) play.classList.toggle("isActive", !!vizState.running);
+  if(pause) pause.classList.toggle("isActive", !vizState.running);
+  if(reset){
+    reset.classList.remove("isPressed");
+    if(trigger==="reset"){
+      void reset.offsetWidth;
+      reset.classList.add("isPressed");
+      setTimeout(()=>reset.classList.remove("isPressed"), 420);
+    }
+  }
+}
+
 function initVisualizer(){
   if(!$("visualizerCanvas")) return;
   const activeVizSection=document.querySelector(".visualizerSinglePage[data-viz-mode]");
@@ -821,9 +758,9 @@ function initVisualizer(){
     };
   });
   ["vizFreq","vizAmp","vizSpeed","vizTimeSpeed","vizSubMode"].forEach(id=>$(id)?.addEventListener("input",getVizParams));
-  $("vizPlayBtn").onclick=()=>{vizState.running=true;};
-  $("vizPauseBtn").onclick=()=>{vizState.running=false;};
-  $("vizResetBtn").onclick=()=>{vizState.t=0;};
+  $("vizPlayBtn").onclick=()=>{vizState.running=true;updateVizPlayerButtons("play");};
+  $("vizPauseBtn").onclick=()=>{vizState.running=false;updateVizPlayerButtons("pause");};
+  $("vizResetBtn").onclick=()=>{vizState.t=0;updateVizPlayerButtons("reset");};
   $("vizExportBtn").onclick=()=>{
     const c=$("visualizerCanvas");
     const a=document.createElement("a");
@@ -832,6 +769,7 @@ function initVisualizer(){
     a.click();
   };
   if(vizState.raf) cancelAnimationFrame(vizState.raf);
+  updateVizPlayerButtons();
   drawVisualizer();
 }
 
