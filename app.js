@@ -314,190 +314,268 @@ function drawRebuiltTopic(ctx,c,p,w,h,mode){
     ctx.fillText(`s เริ่มได้ยิน Echo ≈ ${minEchoDistance.toFixed(1)} m`, sx+sw/2, bottomY+54);
     ctx.restore();
   } else if(mode==="soundRefraction"){
-    const tempTop=vNum("vizTempTop",30), tempBottom=vNum("vizTempBottom",10), angle=vNum("vizAngle",25);
+    const freq=vNum("vizFreq",800), tempTop=vNum("vizTempTop",30), tempBottom=vNum("vizTempBottom",10), angle=vNum("vizAngle",25);
     const profile=vSel("vizRefractionMode","layer");
     const vTop = 331 + 0.6*tempTop;
     const vBottom = 331 + 0.6*tempBottom;
+    const lambdaTop = vTop / Math.max(1,freq);
+    const lambdaBottom = vBottom / Math.max(1,freq);
     const topHotter = tempTop > tempBottom;
     const bottomHotter = tempBottom > tempTop;
     const theta1 = angle*Math.PI/180;
-    const v1 = vTop;       // source is in the upper layer, as in the reference sketch
-    const v2 = vBottom;    // refracted ray enters the lower layer
-    const ratio = (v2/v1)*Math.sin(theta1);
-    const totalInternal = ratio >= 1;
-    const theta2 = Math.asin(lim(ratio, -0.999, 0.999));
+    const sinTheta2 = lim((vBottom/vTop)*Math.sin(theta1), -0.999, 0.999);
+    const theta2 = Math.asin(sinTheta2);
     const theta1Deg = theta1*180/Math.PI;
     const theta2Deg = theta2*180/Math.PI;
-    const thetaCompare = Math.abs(theta2Deg-theta1Deg) < 0.15 ? "θ₂ ≈ θ₁" : (theta2Deg < theta1Deg ? "θ₂ < θ₁" : "θ₂ > θ₁");
     const vCompare = Math.abs(vTop-vBottom) < 0.15 ? "v₁ ≈ v₂" : (vTop > vBottom ? "v₁ > v₂" : "v₁ < v₂");
+    const thetaCompare = Math.abs(theta2Deg-theta1Deg) < 0.15 ? "θ₂ ≈ θ₁" : (theta2Deg < theta1Deg ? "θ₂ < θ₁" : "θ₂ > θ₁");
     const relationLabel = topHotter ? "บนสูงกว่า" : bottomHotter ? "ล่างสูงกว่า" : "เท่ากัน";
+    const deltaT = Math.abs(tempTop-tempBottom);
+    const noRefraction = Math.abs(vTop-vBottom) < 0.15;
 
+    vText("vizFreqLabel",freq.toFixed(0)+" Hz");
     vText("vizTempTopLabel",tempTop.toFixed(0)+" °C");
     vText("vizTempBottomLabel",tempBottom.toFixed(0)+" °C");
-    vText("vizTempRelationLabel",relationLabel);
     vText("vizAngleLabel",theta1Deg.toFixed(0)+"°");
     vText("vizRefractionModeLabel",profile==="gradient"?"เกรเดียน":"แบ่งชั้น");
+    vText("vizTempRelationLabel",relationLabel);
 
     panel=corePanel(ctx,w,h,"Sound Refraction (การหักเหของเสียง)");
-    cx=w/2; cy=panel.y+panel.h*.50;
-    const xL=panel.x+20, xR=panel.x+panel.w-40, top=panel.y+20, bottom=panel.y+panel.h-28;
-    const boundaryY = cy;
+    const xL=panel.x+22, xR=panel.x+panel.w-20, top=panel.y+18, bottom=panel.y+panel.h-18;
+    const boundaryY = panel.y + panel.h*0.518;
 
-    // Background temperature field
-    const colorForTemp = (T, alpha=.16) => {
-      const t = lim((T-0)/45,0,1);
-      const r=Math.round(34 + t*221), g=Math.round(211 - t*76), b=Math.round(238 - t*188);
-      return `rgba(${r},${g},${b},${alpha})`;
+    const colorForTemp=(T,a=.16)=>{
+      const t=lim(T/45,0,1);
+      const r=Math.round(38 + t*215), g=Math.round(190 - t*55), b=Math.round(245 - t*165);
+      return `rgba(${r},${g},${b},${a})`;
     };
+    const drawWaveSeg=(cx,cy,dx,dy,len,color)=>{
+      const L=Math.hypot(dx,dy)||1;
+      const px=dy/L, py=-dx/L;
+      ctx.save();
+      ctx.strokeStyle=color; ctx.lineWidth=2.2; ctx.lineCap="round";
+      ctx.beginPath();
+      ctx.moveTo(cx-px*len*.5, cy-py*len*.5);
+      ctx.lineTo(cx+px*len*.5, cy+py*len*.5);
+      ctx.stroke();
+      ctx.restore();
+    };
+    const bezierPoint=(t,p0,p1,p2,p3)=>{
+      const u=1-t, tt=t*t, uu=u*u;
+      return {x:uu*u*p0.x + 3*uu*t*p1.x + 3*u*tt*p2.x + tt*t*p3.x, y:uu*u*p0.y + 3*uu*t*p1.y + 3*u*tt*p2.y + tt*t*p3.y};
+    };
+    const bezierTan=(t,p0,p1,p2,p3)=>{
+      const u=1-t;
+      return {x:3*u*u*(p1.x-p0.x) + 6*u*t*(p2.x-p1.x) + 3*t*t*(p3.x-p2.x), y:3*u*u*(p1.y-p0.y) + 6*u*t*(p2.y-p1.y) + 3*t*t*(p3.y-p2.y)};
+    };
+    const drawAngleArc=(cx,cy,startAng,endAng,r,color,label,lx,ly)=>{
+      ctx.save();
+      ctx.strokeStyle=color; ctx.lineWidth=2.2;
+      ctx.beginPath(); ctx.arc(cx,cy,r,startAng,endAng,false); ctx.stroke();
+      ctx.fillStyle=color; ctx.font="bold 18px Sarabun, system-ui"; ctx.fillText(label,lx,ly); ctx.restore();
+    };
+
+    // Temperature field backgrounds
     if(profile==="gradient"){
-      const bands=18;
+      const bands=24;
       for(let i=0;i<bands;i++){
         const frac=i/(bands-1);
-        const T = tempTop + (tempBottom-tempTop)*frac;
-        const y=top+i*(bottom-top)/bands;
+        const T=tempTop + (tempBottom-tempTop)*frac;
+        const y=top + i*(bottom-top)/bands;
         const hBand=(bottom-top)/bands+1;
-        ctx.fillStyle=colorForTemp(T,.14);
+        ctx.fillStyle=colorForTemp(T,.145);
         ctx.fillRect(xL,y,xR-xL,hBand);
       }
-      ctx.strokeStyle="rgba(255,255,255,.14)";
-      ctx.lineWidth=1;
+      ctx.strokeStyle="rgba(255,255,255,.08)"; ctx.lineWidth=1;
       for(let i=1;i<bands;i++){
-        const y=top+i*(bottom-top)/bands;
+        const y=top + i*(bottom-top)/bands;
         ctx.beginPath(); ctx.moveTo(xL,y); ctx.lineTo(xR,y); ctx.stroke();
       }
     }else{
       ctx.fillStyle=colorForTemp(tempTop,.17); ctx.fillRect(xL,top,xR-xL,boundaryY-top);
       ctx.fillStyle=colorForTemp(tempBottom,.17); ctx.fillRect(xL,boundaryY,xR-xL,bottom-boundaryY);
-      ctx.strokeStyle="rgba(255,255,255,.45)";
-      ctx.setLineDash([8,8]);
-      ctx.lineWidth=2;
-      ctx.beginPath(); ctx.moveTo(panel.x+30,boundaryY); ctx.lineTo(panel.x+panel.w-30,boundaryY); ctx.stroke();
-      ctx.setLineDash([]);
+      ctx.strokeStyle="rgba(255,255,255,.30)"; ctx.setLineDash([9,7]); ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(xL,boundaryY); ctx.lineTo(xR,boundaryY); ctx.stroke(); ctx.setLineDash([]);
     }
 
-    // Reference-style geometry: speaker in upper-left, ray crosses horizontal boundary.
-    const sx=panel.x+98, sy=boundaryY-132;
-    const startX=sx+58, startY=sy+15;
-    const hitX=cx-18, hitY=boundaryY;
+    // Reference-like geometry
+    const spX=panel.x+86, spY=panel.y+108;
+    drawSpeaker(ctx, spX, spY, .84);
+    const hitX = panel.x+panel.w*0.52, hitY = boundaryY;
+    const incLen = 188;
+    const startX = hitX - incLen*Math.sin(theta1);
+    const startY = hitY - incLen*Math.cos(theta1);
     const normalX = hitX;
-    const incomingLen = Math.max(180, (hitY-startY)/Math.max(0.2,Math.cos(theta1)));
-    const adjustedStartX = hitX - incomingLen*Math.sin(theta1);
-    drawSpeaker(ctx,sx,sy,.82);
 
-    // Draw incident ray and refracted ray/curve
+    const stepTop = lim(lambdaTop*72, 20, 42);
+    const stepBottom = lim(lambdaBottom*72, 20, 42);
+
+    // Incident wavefronts in upper region
     ctx.save();
-    ctx.strokeStyle="rgba(255,92,171,.96)";
-    ctx.lineWidth=4;
-    ctx.lineCap="round";
-    ctx.lineJoin="round";
+    ctx.beginPath(); ctx.rect(xL, top, xR-xL, boundaryY-top); ctx.clip();
+    ctx.strokeStyle="rgba(28,144,255,.46)"; ctx.lineWidth=2.1;
+    for(let r=34; r<520; r+=stepTop){ ctx.beginPath(); ctx.arc(spX+6, spY, r, -0.90, 0.90); ctx.stroke(); }
+    ctx.restore();
+
+    const outLen=220;
+    const layerOutX = hitX + outLen*Math.sin(theta2);
+    const layerOutY = hitY + outLen*Math.cos(theta2);
+
+    // Ray path and gradient path
+    let gradP0=null, gradP1=null, gradP2=null, gradP3=null;
+    ctx.save();
+    ctx.strokeStyle="rgba(255,92,171,.98)"; ctx.lineWidth=4; ctx.lineCap="round"; ctx.lineJoin="round";
     ctx.beginPath();
     if(profile==="gradient"){
-      const towardLow = tempBottom < tempTop ? 1 : tempBottom > tempTop ? -1 : 0; // + curve downward if lower layer is slower/cooler
-      const endX=hitX+300;
-      const endY=hitY + (towardLow===0 ? 80 : towardLow*(74 + Math.abs(tempTop-tempBottom)*2.0));
-      const mid1X=adjustedStartX+155, mid1Y=startY + 35;
-      const mid2X=hitX+92, mid2Y=hitY + (towardLow===0 ? 42 : towardLow*(34 + Math.abs(tempTop-tempBottom)*1.1));
-      ctx.moveTo(adjustedStartX,startY);
-      ctx.bezierCurveTo(mid1X,mid1Y,mid2X,mid2Y,endX,endY);
+      const endTheta = theta2;
+      const endLen = 242;
+      const endX = hitX + endLen*Math.sin(endTheta);
+      const endY = hitY + endLen*Math.cos(endTheta);
+      gradP0={x:hitX,y:hitY};
+      gradP1={x:hitX + 58*Math.sin(theta1), y:hitY + 58*Math.cos(theta1)};
+      gradP2={x:endX - 76*Math.sin(endTheta), y:endY - 76*Math.cos(endTheta)};
+      gradP3={x:endX,y:endY};
+      ctx.moveTo(startX,startY); ctx.lineTo(hitX,hitY);
+      ctx.bezierCurveTo(gradP1.x,gradP1.y,gradP2.x,gradP2.y,gradP3.x,gradP3.y);
       ctx.stroke();
-      coreArrow(ctx,endX-62,endY-(towardLow||1)*22,endX,endY,"#ff5cab",4);
+      coreArrow(ctx,endX-58,endY-20,endX,endY,"#ff5cab",4);
     }else{
-      const outLen=300;
-      let outX, outY;
-      if(totalInternal){
-        outX = hitX + outLen*Math.sin(theta1);
-        outY = hitY - outLen*Math.cos(theta1);
-      }else{
-        outX = hitX + outLen*Math.sin(theta2);
-        outY = hitY + outLen*Math.cos(theta2);
-      }
-      ctx.moveTo(adjustedStartX,startY);
-      ctx.lineTo(hitX,hitY);
-      ctx.lineTo(outX,outY);
-      ctx.stroke();
-      coreArrow(ctx,outX-66,outY-22,outX,outY,"#ff5cab",4);
+      ctx.moveTo(startX,startY); ctx.lineTo(hitX,hitY); ctx.lineTo(layerOutX,layerOutY); ctx.stroke();
+      coreArrow(ctx,layerOutX-58,layerOutY-20,layerOutX,layerOutY,"#ff5cab",4);
     }
     ctx.restore();
 
-    // Animated sound dot
+    // Refracted / gradient wavefronts
+    if(profile==="layer"){
+      ctx.save();
+      ctx.beginPath(); ctx.rect(xL, boundaryY, xR-xL, bottom-boundaryY); ctx.clip();
+      const dx = layerOutX-hitX, dy = layerOutY-hitY;
+      for(let s=24, i=0; s<outLen-12 && i<10; s+=stepBottom, i++){
+        const cx = hitX + dx*(s/outLen);
+        const cy = hitY + dy*(s/outLen);
+        const segLen = 48 + i*5;
+        drawWaveSeg(cx,cy,dx,dy,segLen,"rgba(28,144,255,.44)");
+      }
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(xL, boundaryY, xR-xL, bottom-boundaryY); ctx.clip();
+      const us=[0.06,0.18,0.30,0.42,0.54,0.66,0.78,0.90];
+      us.forEach((u)=>{
+        const p = bezierPoint(u,gradP0,gradP1,gradP2,gradP3);
+        const t = bezierTan(u,gradP0,gradP1,gradP2,gradP3);
+        const localTemp = tempTop + (tempBottom-tempTop)*lim((p.y-top)/(bottom-top),0,1);
+        const localV = 331 + 0.6*localTemp;
+        const localLambda = localV/Math.max(1,freq);
+        const segLen = lim(localLambda*72 + 16, 50, 88);
+        drawWaveSeg(p.x,p.y,t.x,t.y,segLen,"rgba(28,144,255,.42)");
+      });
+      ctx.restore();
+    }
+
+    // Motion marker
     if(vizState.running){
       const u=(time*.06)%1;
       if(profile==="gradient"){
-        const towardLow = tempBottom < tempTop ? 1 : tempBottom > tempTop ? -1 : 0;
-        const px=adjustedStartX+(hitX+300-adjustedStartX)*u;
-        const py=startY+(hitY-startY)*u + (towardLow===0?0:towardLow*Math.sin(u*Math.PI)*(36+Math.abs(tempTop-tempBottom)*1.1));
+        const p = bezierPoint(Math.max(.02,u),gradP0,gradP1,gradP2,gradP3);
+        const px = u<.18 ? startX + (hitX-startX)*(u/.18) : p.x;
+        const py = u<.18 ? startY + (hitY-startY)*(u/.18) : p.y;
         coreDot(ctx,px,py,6,"#ff5cab");
       }else{
-        const outLen=300;
-        const outTheta = totalInternal ? -theta1 : theta2;
-        const outX = hitX + outLen*Math.sin(Math.abs(outTheta));
-        const outY = hitY + (totalInternal?-1:1)*outLen*Math.cos(Math.abs(outTheta));
-        const px = u<.5 ? adjustedStartX+(hitX-adjustedStartX)*(u/.5) : hitX+(outX-hitX)*((u-.5)/.5);
-        const py = u<.5 ? startY+(hitY-startY)*(u/.5) : hitY+(outY-hitY)*((u-.5)/.5);
+        const px = u<.5 ? startX + (hitX-startX)*(u/.5) : hitX + (layerOutX-hitX)*((u-.5)/.5);
+        const py = u<.5 ? startY + (hitY-startY)*(u/.5) : hitY + (layerOutY-hitY)*((u-.5)/.5);
         coreDot(ctx,px,py,6,"#ff5cab");
       }
     }
 
-    // Normal, angle labels, and relationship card
+    // Normal line and angle markers
     ctx.save();
-    ctx.strokeStyle="rgba(232,245,255,.72)";
-    ctx.setLineDash([7,7]);
-    ctx.lineWidth=2;
-    ctx.beginPath(); ctx.moveTo(normalX,boundaryY-112); ctx.lineTo(normalX,boundaryY+112); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle="rgba(232,245,255,.88)";
-    ctx.font="bold 13px Sarabun, system-ui";
-    ctx.textAlign="center";
-    ctx.fillText("Normal",normalX+42,boundaryY-95);
-    ctx.fillText("(เส้นแนวฉาก)",normalX+42,boundaryY-78);
-    ctx.fillStyle="#e8f5ff";
-    ctx.font="bold 18px Sarabun, system-ui";
-    ctx.fillText(`θ₁`,normalX-40,boundaryY-42);
-    if(profile==="layer" && !totalInternal) ctx.fillText(`θ₂`,normalX-38,boundaryY+62);
+    ctx.strokeStyle="rgba(235,245,255,.78)"; ctx.setLineDash([7,7]); ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(normalX,boundaryY-112); ctx.lineTo(normalX,boundaryY+118); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle="rgba(235,245,255,.95)"; ctx.textAlign="center";
+    ctx.font="bold 13px Sarabun, system-ui"; ctx.fillText("Normal", normalX, boundaryY-126);
+    ctx.font="12px Sarabun, system-ui"; ctx.fillText("(เส้นแนวฉาก)", normalX, boundaryY-110);
+    drawAngleArc(normalX,hitY,-Math.PI/2,-Math.PI/2+theta1,26,"#f6d86b","θ₁",normalX-50,hitY-28);
+    if(profile==="layer") drawAngleArc(normalX,hitY,Math.PI/2-theta2,Math.PI/2,26,"#c8ffd5","θ₂",normalX-42,hitY+64);
     ctx.restore();
 
-    // Temperature and velocity labels like the reference sketch.
+    // Small invariant badge
+    ctx.save();
+    ctx.fillStyle="rgba(10,22,50,.84)"; ctx.strokeStyle="rgba(96,165,250,.36)";
+    roundRect(ctx,panel.x+26,panel.y+26,86,34,12); ctx.fill(); ctx.stroke();
+    ctx.fillStyle="#dbeafe"; ctx.font="bold 14px Sarabun, system-ui"; ctx.textAlign="center"; ctx.fillText("f คงที่", panel.x+69, panel.y+48);
+    ctx.font="12px Sarabun, system-ui"; ctx.fillStyle="#9fd6ff"; ctx.fillText("ความถี่ไม่เปลี่ยน", panel.x+69, panel.y+62);
+    ctx.restore();
+
+    // Ray labels for clarity
+    ctx.save();
+    ctx.font="bold 13px Sarabun, system-ui";
+    ctx.fillStyle="#ff8fc2"; ctx.textAlign="left";
+    ctx.fillText("Incident Ray", startX+30, startY-8);
+    if(profile==="layer") ctx.fillText("Refracted Ray", layerOutX-88, layerOutY-10);
+    else ctx.fillText("Refracted Path", hitX+86, hitY+86);
+    ctx.restore();
+
+    // Region labels
     ctx.save();
     ctx.textAlign="left";
-    ctx.font="bold 15px Sarabun, system-ui";
-    const topName = topHotter ? "Warm Air (อากาศอุ่น)" : bottomHotter ? "Cool Air (อากาศเย็น)" : "Air Layer ด้านบน";
-    const bottomName = bottomHotter ? "Warm Air (อากาศอุ่น)" : topHotter ? "Cool Air (อากาศเย็น)" : "Air Layer ด้านล่าง";
-    ctx.fillStyle=topHotter ? "#ff98a8" : "#39d5ff";
-    ctx.fillText(topName, hitX+118, panel.y+92);
+    ctx.font="bold 14px Sarabun, system-ui";
+    ctx.fillStyle= topHotter ? "#ff98a8" : "#39d5ff";
+    ctx.fillText(topHotter?"Warm Air (อากาศอุ่น)":"Cool Air (อากาศเย็น)", hitX+82, panel.y+88);
     ctx.font="13px Sarabun, system-ui";
-    ctx.fillText(`${topHotter?"บริเวณที่มีอุณหภูมิอากาศสูงกว่า":"บริเวณที่มีอุณหภูมิอากาศต่ำกว่า"}`, hitX+118, panel.y+118);
-    ctx.fillText(`v₁ ≈ ${vTop.toFixed(1)} m/s`, hitX+118, panel.y+142);
+    ctx.fillText(topHotter?"Faster (เร็วกว่า)":"Slower (ช้ากว่า)", hitX+82, panel.y+110);
+    ctx.fillText(`v₁ ≈ ${vTop.toFixed(1)} m/s`, hitX+82, panel.y+132);
+    ctx.fillText(`λ₁ ≈ ${(lambdaTop*100).toFixed(1)} cm`, hitX+82, panel.y+154);
 
-    ctx.font="bold 15px Sarabun, system-ui";
-    ctx.fillStyle=bottomHotter ? "#ff98a8" : "#39d5ff";
-    ctx.fillText(bottomName, panel.x+70, panel.y+panel.h-148);
+    ctx.font="bold 14px Sarabun, system-ui";
+    ctx.fillStyle= bottomHotter ? "#ff98a8" : "#39d5ff";
+    ctx.fillText(bottomHotter?"Warm Air (อากาศอุ่น)":"Cool Air (อากาศเย็น)", panel.x+40, panel.y+panel.h-142);
     ctx.font="13px Sarabun, system-ui";
-    ctx.fillText(`${bottomHotter?"บริเวณที่มีอุณหภูมิอากาศสูงกว่า":"บริเวณที่มีอุณหภูมิอากาศต่ำกว่า"}`, panel.x+70, panel.y+panel.h-122);
-    ctx.fillText(`v₂ ≈ ${vBottom.toFixed(1)} m/s`, panel.x+70, panel.y+panel.h-98);
+    ctx.fillText(bottomHotter?"Faster (เร็วกว่า)":"Slower (ช้ากว่า)", panel.x+40, panel.y+panel.h-120);
+    ctx.fillText(`v₂ ≈ ${vBottom.toFixed(1)} m/s`, panel.x+40, panel.y+panel.h-98);
+    ctx.fillText(`λ₂ ≈ ${(lambdaBottom*100).toFixed(1)} cm`, panel.x+40, panel.y+panel.h-76);
     ctx.restore();
 
-    // Floating relationship card
+    // Special note for teaching
+    if(deltaT < 8 && profile==="layer"){
+      ctx.save();
+      ctx.fillStyle="rgba(10,22,50,.82)"; ctx.strokeStyle="rgba(125,211,252,.34)";
+      roundRect(ctx,panel.x+26,panel.y+panel.h-148,160,32,12); ctx.fill(); ctx.stroke();
+      ctx.fillStyle="#dbeafe"; ctx.font="12px Sarabun, system-ui"; ctx.textAlign="center";
+      ctx.fillText("หมายเหตุ: ΔT น้อย มุมเปลี่ยนเพียงเล็กน้อย", panel.x+106, panel.y+panel.h-127);
+      ctx.restore();
+    }
+
+    // Relationship card (closer to reference)
     ctx.save();
-    const cardX=panel.x+panel.w-206, cardY=panel.y+78, cardW=174, cardH=112;
-    ctx.fillStyle="rgba(12,26,53,.80)";
-    ctx.strokeStyle="rgba(96,165,250,.35)";
-    roundRect(ctx,cardX,cardY,cardW,cardH,14); ctx.fill(); ctx.stroke();
+    const bx=panel.x+panel.w-196, by=panel.y+74, bw=166, bh=126;
+    ctx.fillStyle="rgba(13,26,53,.86)"; ctx.strokeStyle="rgba(96,165,250,.38)";
+    roundRect(ctx,bx,by,bw,bh,16); ctx.fill(); ctx.stroke();
     ctx.textAlign="center";
-    ctx.fillStyle="#ff9ed2";
-    ctx.font="bold 18px Sarabun, system-ui";
-    ctx.fillText(vCompare,cardX+cardW/2,cardY+32);
-    ctx.fillText(profile==="layer" && !totalInternal ? thetaCompare : "มุมเปลี่ยนต่อเนื่อง",cardX+cardW/2,cardY+60);
-    ctx.fillStyle="#dbeafe";
-    ctx.font="12px Sarabun, system-ui";
-    const bendText = tempBottom < tempTop ? "หักเหเข้าหาด้านล่างที่ช้ากว่า" : tempBottom > tempTop ? "หักเหออกจากแนวฉาก" : "ไม่เกิดการหักเหชัดเจน";
-    ctx.fillText(profile==="gradient"?"แนวเสียงค่อย ๆ โค้ง":bendText,cardX+cardW/2,cardY+88);
+    ctx.fillStyle="#ff9ed2"; ctx.font="bold 18px Sarabun, system-ui";
+    ctx.fillText(vCompare, bx+bw/2, by+30);
+    ctx.fillText(profile==="layer"?(noRefraction?"θ₂ = θ₁":thetaCompare):"θ เปลี่ยนต่อเนื่อง", bx+bw/2, by+55);
+    ctx.fillStyle="#dbeafe"; ctx.font="12px Sarabun, system-ui";
+    if(profile==="layer"){
+      if(noRefraction){
+        ctx.fillText("ไม่มีการหักเหสุทธิ", bx+bw/2, by+82);
+        ctx.fillText("เพราะ v₁ ≈ v₂", bx+bw/2, by+100);
+      }else{
+        ctx.fillText(vTop>vBottom?"หักเหเข้าหาแนวฉาก":"หักเหออกจากแนวฉาก", bx+bw/2, by+82);
+        ctx.fillText(deltaT<8?"ΔT น้อย → มุมเปลี่ยนน้อย":"เข้าสู่บริเวณที่ช้ากว่า", bx+bw/2, by+100);
+      }
+    }else{
+      ctx.fillText("ไม่มี θ₂ ค่าเดียว", bx+bw/2, by+82);
+      ctx.fillText("wavefront ⟂ tangent", bx+bw/2, by+100);
+    }
     ctx.restore();
 
+    // Summary cards
     if(profile==="layer"){
-      coreMetricCard(ctx,panel.x+38,panel.y+panel.h-104,310,80,"มุมหักเห",totalInternal?"เกิดการสะท้อนกลับ":`θ₂ ≈ ${theta2Deg.toFixed(1)}°`,`sinθ₁/v₁ = sinθ₂/v₂`,"#9dffcb");
-      coreMetricCard(ctx,panel.x+366,panel.y+panel.h-104,374,80,"แนวคิดสำคัญ","เสียงเบนเข้าหาบริเวณที่ช้ากว่า",`θ₁ = ${theta1Deg.toFixed(0)}° | ${vCompare} | ${thetaCompare}`,"#ff5cab");
+      coreMetricCard(ctx,panel.x+24,panel.y+panel.h-104,316,82,"มุมหักเห", noRefraction?"θ₂ = θ₁":`θ₂ ≈ ${theta2Deg.toFixed(1)}°`, `sinθ₁/v₁ = sinθ₂/v₂ | ΔT = ${deltaT.toFixed(0)}°C`, "#9dffcb");
+      coreMetricCard(ctx,panel.x+352,panel.y+panel.h-104,390,82,"ข้อสรุปทางฟิสิกส์", noRefraction?"เมื่อ v₁ ≈ v₂ เสียงจะไม่เกิดการหักเหสุทธิ":"ความถี่คงเดิม แต่ความเร็วเสียงและความยาวคลื่นเปลี่ยนตามอุณหภูมิอากาศ", noRefraction?"แนวรังสีและมุมยังคงต่อเนื่อง":"หน้าคลื่นต้องตั้งฉากกับทิศการเคลื่อนที่ของเสียงเสมอ", "#ff5cab");
     }else{
-      coreMetricCard(ctx,panel.x+38,panel.y+panel.h-104,704,80,"แนวคิดสำคัญ","อุณหภูมิเปลี่ยนต่อเนื่อง → แนวเสียงค่อย ๆ โค้ง",`เชื่อมโยงจากแบบแบ่งชั้น แต่ไม่มีมุมหักเหค่าเดียว`,"#ff5cab");
+      coreMetricCard(ctx,panel.x+24,panel.y+panel.h-104,718,82,"ข้อสรุปทางฟิสิกส์","เมื่ออุณหภูมิเปลี่ยนแปลงอย่างต่อเนื่อง แนวการเคลื่อนที่ของเสียงและแนวหน้าคลื่นจะค่อย ๆ เปลี่ยนทิศ",`โหมดเกรเดียนเป็นภาพจำลองเชิงแนวคิด และไม่สามารถระบุมุมหักเหเป็นค่าเดียวได้`,"#ff5cab");
     }
 
   } else if(mode==="soundDiffraction"){
@@ -2543,7 +2621,7 @@ function initVisualizer(){
       vizState.mode=btn.dataset.viz;
     };
   });
-  ["vizFreq","vizFreq2","vizAmp","vizSpeed","vizTimeSpeed","vizPhase","vizPhaseDiff","vizSubMode","vizDistance","vizTemp","vizAngle","vizTempDiff","vizSlit","vizSeparation","vizTubeMode","vizLength","vizMach","vizPower","vizIntensity","vizLevel","vizSourceLevel","vizProtection","vizAppCategory","vizInstrument","vizHarmonicMix","vizWallType","vizRefractionMode","vizHotSide"].forEach(id=>{
+  ["vizFreq","vizFreq2","vizAmp","vizSpeed","vizTimeSpeed","vizPhase","vizPhaseDiff","vizSubMode","vizDistance","vizTemp","vizAngle","vizTempDiff","vizTempTop","vizTempBottom","vizSlit","vizSeparation","vizTubeMode","vizLength","vizMach","vizPower","vizIntensity","vizLevel","vizSourceLevel","vizProtection","vizAppCategory","vizInstrument","vizHarmonicMix","vizWallType","vizRefractionMode","vizHotSide"].forEach(id=>{
     const el=$(id);
     if(!el) return;
     const handler=()=>{ getVizParams(); if(typeof drawVisualizer === "function") drawVisualizer(); };
@@ -2570,7 +2648,7 @@ function initVisualizer(){
   if($("vizPlayBtn")) $("vizPlayBtn").onclick=()=>{vizState.running=true;updateVizPlayerButtons("play");if(vizState.raf) cancelAnimationFrame(vizState.raf);drawVisualizer();};
   if($("vizPauseBtn")) $("vizPauseBtn").onclick=()=>{vizState.running=false;updateVizPlayerButtons("pause");drawVisualizer();};
   if($("vizResetBtn")) $("vizResetBtn").onclick=()=>{vizState.t=0;vizState.running=false;updateVizPlayerButtons("reset");if(vizState.raf) cancelAnimationFrame(vizState.raf);drawVisualizer();};
-  if($("vizExportBtn")) if($("vizExportBtn")) $("vizExportBtn").onclick=()=>{
+  if($("vizExportBtn")) $("vizExportBtn").onclick=()=>{
     const c=$("visualizerCanvas");
     const a=document.createElement("a");
     a.href=c.toDataURL("image/png");
@@ -2638,6 +2716,40 @@ function getLocalPageSnapshot(){
   if($("vizTemp")) row.parameter_temperature_c = Number($("vizTemp").value || 0);
   if($("vizAngle")) row.parameter_angle_deg = Number($("vizAngle").value || 0);
   if($("vizTempDiff")) row.parameter_temperature_difference_c = Number($("vizTempDiff").value || 0);
+  if($("vizTempTop")) row.parameter_temp_top_c = Number($("vizTempTop").value || 0);
+  if($("vizTempBottom")) row.parameter_temp_bottom_c = Number($("vizTempBottom").value || 0);
+  if($("vizRefractionMode")) row.parameter_refraction_mode = $("vizRefractionMode").value || "";
+  if($("vizTempRelationLabel")) row.parameter_temperature_relation_display = $("vizTempRelationLabel").textContent || "";
+  if($("vizTempTop") && $("vizTempBottom") && $("vizFreq")){
+    const tempTop = Number($("vizTempTop").value || 0);
+    const tempBottom = Number($("vizTempBottom").value || 0);
+    const freq = Math.max(1, Number($("vizFreq").value || 1));
+    const theta1Deg = Number($("vizAngle")?.value || 0);
+    const v1 = 331 + 0.6 * tempTop;
+    const v2 = 331 + 0.6 * tempBottom;
+    const lambda1 = v1 / freq;
+    const lambda2 = v2 / freq;
+    const theta1Rad = theta1Deg * Math.PI / 180;
+    const theta2Rad = Math.asin(lim((v2 / v1) * Math.sin(theta1Rad), -0.999, 0.999));
+    const theta2Deg = theta2Rad * 180 / Math.PI;
+    const deltaT = Math.abs(tempTop - tempBottom);
+    const deltaV = Math.abs(v1 - v2);
+    const noRefraction = Math.abs(v1 - v2) < 0.15;
+    row.derived_delta_t_c = +deltaT.toFixed(2);
+    row.derived_v1_top_m_s = +v1.toFixed(3);
+    row.derived_v2_bottom_m_s = +v2.toFixed(3);
+    row.derived_delta_v_m_s = +deltaV.toFixed(3);
+    row.derived_lambda1_top_m = +lambda1.toFixed(5);
+    row.derived_lambda2_bottom_m = +lambda2.toFixed(5);
+    row.derived_theta1_deg = +theta1Deg.toFixed(3);
+    row.derived_theta2_deg = +theta2Deg.toFixed(3);
+    row.derived_refraction_behavior = noRefraction
+      ? "ไม่เกิดการหักเหสุทธิ"
+      : (v1 > v2 ? "หักเหเข้าหาแนวฉาก" : "หักเหออกจากแนวฉาก");
+    row.derived_model_note = ($("vizRefractionMode")?.value === "gradient")
+      ? "โหมดเกรเดียนเป็นภาพจำลองเชิงแนวคิด ไม่มีมุมหักเหค่าเดียว"
+      : "แบบแบ่งชั้นใช้ sinθ1/v1 = sinθ2/v2";
+  }
   if($("vizSlit")) row.parameter_slit_width_lambda = Number($("vizSlit").value || 0);
   if($("vizSeparation")) row.parameter_source_separation_m = Number($("vizSeparation").value || 0);
   if($("vizTubeMode")) row.parameter_tube_mode_n = Number($("vizTubeMode").value || 0);
